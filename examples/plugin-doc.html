@@ -82,16 +82,94 @@
       return base64;
     }
 
+    function propsToStyle(props) {
+      var styleStr = '';
+      if (props) {
+        if (props.b) {
+          styleStr += 'font-weight: bold; ';
+        }
+        if (props.i) {
+          styleStr += 'font-style: italic; ';
+        }
+        if (props.u) {
+          styleStr += 'text-decoration: underline; ';
+        }
+        if (props.strike) {
+          styleStr += 'text-decoration: line-through; ';
+        }
+        if (props.color) {
+          styleStr += 'color: ' + props.color + '; ';
+        }
+        if (props.highlight) {
+          styleStr += 'background-color: ' + props.highlight + '; ';
+        }
+        if (props.sz && !isNaN(props.sz) && props.sz != 11) {
+          styleStr += 'font-size: ' + props.sz + '; ';
+        }
+        if (props.spacing) {
+          if (props.spacing.top && !isNaN(props.spacing.top)) {
+            styleStr += 'margin-top: ' + props.spacing.top + '; ';
+          }
+          if (props.spacing.bottom && !isNaN(props.spacing.bottom)) {
+            styleStr += 'margin-bottom: ' + props.spacing.bottom + '; ';
+          }
+          if (props.spacing.lineHeight) {
+            styleStr += 'line-height: ' + props.spacing.lineHeight + '; ';
+          }
+        }
+        if (props.vertAlign) {
+          if (props.vertAlign == 'subscript') {
+            styleStr += 'font-size:xx-small; vertical-align:bottom; ';
+          }
+          if (props.vertAlign == 'superscript') {
+            styleStr += 'font-size:xx-small; vertical-align:top; ';
+          }
+        }
+      }
+      return styleStr;
+    }
+
     var Text = (function() {
       var converter = [],
         isHeading = false,
         paraStarted = false,
         spanStarted = false,
         tableStarted = false,
+        tableRowStarted = false,
+        tableColStarted = false,
+        listStarted = false,
+        listRowStarted = false,
+        headerStyles = {},
         headingLevel = null;
 
       converter.visit = function() {
         //console.log('Type is', this.model.type);
+        function closeTableTag(self) {
+          if (tableColStarted) {
+            self.push('</td>');
+            tableColStarted = false;
+          }
+          if (tableRowStarted) {
+            self.push('</tr>');
+            tableRowStarted = false;
+          }
+          if (tableStarted) {
+            self.push('</tbody></table></div>');
+            tableStarted = false;
+          }
+        }
+
+        function closeListTag(self) {
+          if (listRowStarted) {
+            self.push('</li>');
+            listRowStarted = false;
+          }
+          if (listStarted) {
+            self.push('</ol>');
+            listStarted = false;
+          }
+        }
+
         switch (this.model.type) {
           case 'body':
             this.push('<div class="docContent">');
@@ -99,23 +177,25 @@
           case 'style.document':
             break;
           case 'style.paragraph':
-            //console.log('paragraph style', this.model);
             break;
           case 'style.inline':
-            //console.log('inline style', this.model);
             break;
           case 'heading':
-            console.log('heading', this.model.getOutlineLevel() + 1);
             if (paraStarted) {
               this.push('</p>');
               paraStarted = false;
             }
+            closeTableTag(this);
+            closeListTag(this);
             isHeading = true;
             headingLevel = this.model.getOutlineLevel() + 1;
             this.push('<h' + headingLevel + '>');
             break;
           case 'paragraph':
-            //console.log(this.model.getNamedStyle());
+            if (tableStarted) {
+              return;
+            }
+            closeListTag(this);
             if (!paraStarted) {
               this.push("<p>");
               paraStarted = true;
@@ -124,69 +204,47 @@
             }
             break;
           case 'inline':
-            var st = this.model.getNamedStyle();
             var props = this.model.getAppliedStyles();
-            var styleStr = '';
-            if (props) {
-              if (props.b) {
-                styleStr += 'font-weight: bold; ';
-              }
-              if (props.i) {
-                styleStr += 'font-style: italic; ';
-              }
-              if (props.u) {
-                styleStr += 'text-decoration: underline; ';
-              }
-              if (props.strike) {
-                styleStr += 'text-decoration: line-through; ';
-              }
-              if (props.color) {
-                styleStr += 'color: ' + props.color + '; ';
-              }
-              if (props.highlight) {
-                styleStr += 'background-color: ' + props.highlight + '; ';
-              }
-              if (props.sz && !isNaN(props.sz) && props.sz != 11) {
-                styleStr += 'font-size: ' + props.sz + '; ';
-              }
-              if (props.spacing) {
-                if (props.spacing.top && !isNaN(props.spacing.top)) {
-                  styleStr += 'margin-top: ' + props.spacing.top + '; ';
-                }
-                if (props.spacing.bottom && !isNaN(props.spacing.bottom)) {
-                  styleStr += 'margin-bottom: ' + props.spacing.bottom + '; ';
-                }
-                if (props.spacing.lineHeight) {
-                  styleStr += 'line-height: ' + props.spacing.lineHeight + '; ';
-                }
-              }
-              if (props.vertAlign) {
-                if (props.vertAlign == 'subscript') {
-                  styleStr += 'font-size:xx-small; vertical-align:bottom; ';
-                }
-                if (props.vertAlign == 'superscript') {
-                  styleStr += 'font-size:xx-small; vertical-align:top; ';
-                }
-              }
-            }
+            var styleStr = propsToStyle(props);
             if (styleStr != '') {
               this.push('<span style="' + styleStr + '">');
               spanStarted = true;
             }
             break;
           case 'table':
+            closeTableTag(this);
+            this.push('<div><table class="table"><tbody>');
+            tableStarted = true;
             break;
           case 'row':
+            if (tableColStarted) {
+              this.push('</td>');
+              tableColStarted = false;
+            }
+            if (tableRowStarted) {
+              this.push('</tr>');
+              tableRowStarted = false;
+            }
+            this.push('<tr>');
+            tableRowStarted = true;
             break;
           case 'cell':
+            if (tableColStarted) {
+              this.push('</td>');
+            }
+            this.push('<td>');
+            tableColStarted = true;
             break;
           case 'text':
-            //console.log(this.model.getText());
             var textStr = this.model.getText();
             if (textStr == '') {
               textStr = '&nbsp;';
             }
             this.push(textStr);
+            if (tableColStarted) {
+              this.push('</td>');
+              tableColStarted = false;
+            }
             if (spanStarted) {
               this.push('</span>');
               spanStarted = false;
@@ -198,7 +256,26 @@
             }
             break;
           case 'image':
-            //this.push('<img class="img-responsive" src="data:image/png;base64,' + convertImage(this.model.getImage()) + '"></img>');
+            closeTableTag(this);
+            closeListTag(this);
+            this.push('<img class="img-responsive" src="data:image/png;base64,' + convertImage(this.model.getImage()) + '"></img>');
+            break;
+          case 'list':
+            closeTableTag(this);
+            if (paraStarted) {
+              this.push('</p><p>');
+            }
+            if (!listStarted) {
+              this.push('<ol>');
+              listStarted = true;
+            }
+            var level = this.model.getLevel() + 1;
+            this.push('<li>');
+            listRowStarted = true;
+            break;
+          case 'bookmarkEnd':
+            closeTableTag(this);
+            closeListTag(this);
             break;
           default:
             break;
@@ -219,7 +296,7 @@
         return converter.join('');
       };
 
-      return factory
+      return factory;
     })();
 
     function convertDoc(file, callback) {
@@ -237,6 +314,7 @@
       $('.summernote').summernote({
         height: 600,
         tabsize: 2,
+        focus: true,
         toolbar: [
           ['style', ['bold', 'italic', 'underline', 'clear']],
           ['color', ['color']],
@@ -253,8 +331,8 @@
               case 'doc':
               case 'docx':
                 convertDoc(file, function(file, chtml) {
-                  //console.log(chtml);
                   if (chtml) {
+                    chtml = chtml.replace(new RegExp('<p></p>', 'g'), '<p>&nbsp;</p>');
                     chtml += '</div>';
                   }
                   editor.insertInlineHtml($editable, chtml);

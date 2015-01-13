@@ -251,6 +251,7 @@ define([
      * @param {String} html
      */
     this.insertInlineHtml = function ($editable, html) {
+      range.create();
       dom.createInlineHtml(html);
       afterCommand($editable);
     };
