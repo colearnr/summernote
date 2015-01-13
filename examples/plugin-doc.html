@@ -1,0 +1,280 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>summernote</title>
+  <!-- include jquery -->
+  <script src="//code.jquery.com/jquery-1.9.1.min.js"></script>
+
+  <!-- include libraries BS3 -->
+  <link rel="stylesheet" href="//netdna.bootstrapcdn.com/bootstrap/3.0.3/css/bootstrap.min.css" />
+  <script type="text/javascript" src="//netdna.bootstrapcdn.com/bootstrap/3.0.3/js/bootstrap.min.js"></script>
+  <link rel="stylesheet" href="//netdna.bootstrapcdn.com/font-awesome/4.2.0/css/font-awesome.min.css" />
+
+  <!-- include codemirror (codemirror.css, codemirror.js, xml.js, formatting.js)-->
+  <link rel="stylesheet" type="text/css" href="//cdnjs.cloudflare.com/ajax/libs/codemirror/3.20.0/codemirror.min.css" />
+  <link rel="stylesheet" href="//cdnjs.cloudflare.com/ajax/libs/codemirror/3.20.0/theme/blackboard.min.css">
+  <link rel="stylesheet" href="//cdnjs.cloudflare.com/ajax/libs/codemirror/3.20.0/theme/monokai.min.css">
+  <script type="text/javascript" src="//cdnjs.cloudflare.com/ajax/libs/codemirror/3.20.0/codemirror.js"></script>
+  <script src="//cdnjs.cloudflare.com/ajax/libs/codemirror/3.20.0/mode/xml/xml.min.js"></script>
+  <script src="//cdnjs.cloudflare.com/ajax/libs/codemirror/2.36.0/formatting.min.js"></script>
+
+  <!-- include summernote -->
+  <link rel="stylesheet" href="../dist/summernote.css">
+  <script type="text/javascript" src="../lib/docx4js.js"></script>
+  <script type="text/javascript" src="../dist/summernote.js"></script>
+  <script type="text/javascript" src="../lang/summernote-ko-KR.js"></script>
+  <script type="text/javascript" src="../plugin/summernote-ext-hello.js"></script>
+
+  <script type="text/javascript">
+
+    // Based on https://gist.github.com/jonleighton/958841
+    function convertImage(arrayBuffer) {
+      var base64    = ''
+      var encodings = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/'
+
+      var bytes         = new Uint8Array(arrayBuffer)
+      var byteLength    = bytes.byteLength
+      var byteRemainder = byteLength % 3
+      var mainLength    = byteLength - byteRemainder
+
+      var a, b, c, d
+      var chunk
+
+      // Main loop deals with bytes in chunks of 3
+      for (var i = 0; i < mainLength; i = i + 3) {
+        // Combine the three bytes into a single integer
+        chunk = (bytes[i] << 16) | (bytes[i + 1] << 8) | bytes[i + 2]
+
+        // Use bitmasks to extract 6-bit segments from the triplet
+        a = (chunk & 16515072) >> 18 // 16515072 = (2^6 - 1) << 18
+        b = (chunk & 258048)   >> 12 // 258048   = (2^6 - 1) << 12
+        c = (chunk & 4032)     >>  6 // 4032     = (2^6 - 1) << 6
+        d = chunk & 63               // 63       = 2^6 - 1
+
+        // Convert the raw binary segments to the appropriate ASCII encoding
+        base64 += encodings[a] + encodings[b] + encodings[c] + encodings[d]
+      }
+
+      // Deal with the remaining bytes and padding
+      if (byteRemainder == 1) {
+        chunk = bytes[mainLength]
+
+        a = (chunk & 252) >> 2 // 252 = (2^6 - 1) << 2
+
+        // Set the 4 least significant bits to zero
+        b = (chunk & 3)   << 4 // 3   = 2^2 - 1
+
+        base64 += encodings[a] + encodings[b] + '=='
+      } else if (byteRemainder == 2) {
+        chunk = (bytes[mainLength] << 8) | bytes[mainLength + 1]
+
+        a = (chunk & 64512) >> 10 // 64512 = (2^6 - 1) << 10
+        b = (chunk & 1008)  >>  4 // 1008  = (2^6 - 1) << 4
+
+        // Set the 2 least significant bits to zero
+        c = (chunk & 15)    <<  2 // 15    = 2^4 - 1
+
+        base64 += encodings[a] + encodings[b] + encodings[c] + '='
+      }
+
+      return base64;
+    }
+
+    var Text = (function() {
+      var converter = [],
+        isHeading = false,
+        paraStarted = false,
+        spanStarted = false,
+        tableStarted = false,
+        headingLevel = null;
+
+      converter.visit = function() {
+        //console.log('Type is', this.model.type);
+        switch (this.model.type) {
+          case 'body':
+            this.push('<div class="docContent">');
+            break;
+          case 'style.document':
+            break;
+          case 'style.paragraph':
+            //console.log('paragraph style', this.model);
+            break;
+          case 'style.inline':
+            //console.log('inline style', this.model);
+            break;
+          case 'heading':
+            console.log('heading', this.model.getOutlineLevel() + 1);
+            if (paraStarted) {
+              this.push('</p>');
+              paraStarted = false;
+            }
+            isHeading = true;
+            headingLevel = this.model.getOutlineLevel() + 1;
+            this.push('<h' + headingLevel + '>');
+            break;
+          case 'paragraph':
+            //console.log(this.model.getNamedStyle());
+            if (!paraStarted) {
+              this.push("<p>");
+              paraStarted = true;
+            } else {
+              this.push('</p><p>');
+            }
+            break;
+          case 'inline':
+            var st = this.model.getNamedStyle();
+            var props = this.model.getAppliedStyles();
+            var styleStr = '';
+            if (props) {
+              if (props.b) {
+                styleStr += 'font-weight: bold; ';
+              }
+              if (props.i) {
+                styleStr += 'font-style: italic; ';
+              }
+              if (props.u) {
+                styleStr += 'text-decoration: underline; ';
+              }
+              if (props.strike) {
+                styleStr += 'text-decoration: line-through; ';
+              }
+              if (props.color) {
+                styleStr += 'color: ' + props.color + '; ';
+              }
+              if (props.highlight) {
+                styleStr += 'background-color: ' + props.highlight + '; ';
+              }
+              if (props.sz && !isNaN(props.sz) && props.sz != 11) {
+                styleStr += 'font-size: ' + props.sz + '; ';
+              }
+              if (props.spacing) {
+                if (props.spacing.top && !isNaN(props.spacing.top)) {
+                  styleStr += 'margin-top: ' + props.spacing.top + '; ';
+                }
+                if (props.spacing.bottom && !isNaN(props.spacing.bottom)) {
+                  styleStr += 'margin-bottom: ' + props.spacing.bottom + '; ';
+                }
+                if (props.spacing.lineHeight) {
+                  styleStr += 'line-height: ' + props.spacing.lineHeight + '; ';
+                }
+              }
+              if (props.vertAlign) {
+                if (props.vertAlign == 'subscript') {
+                  styleStr += 'font-size:xx-small; vertical-align:bottom; ';
+                }
+                if (props.vertAlign == 'superscript') {
+                  styleStr += 'font-size:xx-small; vertical-align:top; ';
+                }
+              }
+            }
+            if (styleStr != '') {
+              this.push('<span style="' + styleStr + '">');
+              spanStarted = true;
+            }
+            break;
+          case 'table':
+            break;
+          case 'row':
+            break;
+          case 'cell':
+            break;
+          case 'text':
+            //console.log(this.model.getText());
+            var textStr = this.model.getText();
+            if (textStr == '') {
+              textStr = '&nbsp;';
+            }
+            this.push(textStr);
+            if (spanStarted) {
+              this.push('</span>');
+              spanStarted = false;
+            }
+            if (isHeading && headingLevel !== null) {
+              this.push('</h' + headingLevel + '>');
+              isHeading = false;
+              headingLevel = null;
+            }
+            break;
+          case 'image':
+            //this.push('<img class="img-responsive" src="data:image/png;base64,' + convertImage(this.model.getImage()) + '"></img>');
+            break;
+          default:
+            break;
+        }
+        return;
+      };
+
+      function factory(model, doc, parent) {
+        converter.model = model;
+        return converter;
+      };
+
+      factory.with = function(parent) {
+        return factory;
+      };
+
+      factory.asResult = function() {
+        return converter.join('');
+      };
+
+      return factory
+    })();
+
+    function convertDoc(file, callback) {
+      var docx_lib = require('docx4js');
+      docx_lib.load(file)
+        .then(function(doc) {
+          doc.parse(Text);
+          if (callback) {
+            callback(file, Text.asResult());
+          }
+        })
+    }
+
+    $(document).ready(function() {
+      $('.summernote').summernote({
+        height: 600,
+        tabsize: 2,
+        toolbar: [
+          ['style', ['bold', 'italic', 'underline', 'clear']],
+          ['color', ['color']],
+          ['para', ['ul', 'ol', 'paragraph']],
+          ['height', ['height']],
+          ['table', ['table']],
+          ['insert', ['hello', 'helloImage']],
+          ['insert2', ['helloDropdown', 'codeview']],
+        ],
+        onFileUpload: function(file, extn, sDataURL, editor, $editable) {
+          if (extn) {
+            var obj = null;
+            switch (extn.toLowerCase()) {
+              case 'doc':
+              case 'docx':
+                convertDoc(file, function(file, chtml) {
+                  //console.log(chtml);
+                  if (chtml) {
+                    chtml += '</div>';
+                  }
+                  editor.insertInlineHtml($editable, chtml);
+                });
+                break;
+              case 'xls':
+              case 'xlsx':
+              case 'csv':
+
+                break;
+              default:
+                break;
+            }
+          }
+        }
+      });
+    });
+  </script>
+</head>
+<body>
+<textarea class="summernote"></textarea>
+</body>
+</html>

@@ -6,7 +6,7 @@
  * Copyright 2013-2014 Alan Hong. and other contributors
  * summernote may be freely distributed under the MIT license./
  *
- * Date: 2014-12-19T19:50Z
+ * Date: 2015-01-13T11:44Z
  */
 (function (factory) {
   /* global define */
@@ -18,7 +18,7 @@
     factory(window.jQuery);
   }
 }(function ($) {
-  
+
 
 
   if ('function' !== typeof Array.prototype.reduce) {
@@ -55,13 +55,13 @@
       if (this === void 0 || this === null) {
         throw new TypeError();
       }
-  
+
       var t = Object(this);
       var len = t.length >>> 0;
       if (typeof fun !== 'function') {
         throw new TypeError();
       }
-  
+
       var res = [];
       var thisArg = arguments.length >= 2 ? arguments[1] : void 0;
       for (var i = 0; i < len; i++) {
@@ -72,7 +72,7 @@
           }
         }
       }
-  
+
       return res;
     };
   }
@@ -307,7 +307,7 @@
         return memo + fn(v);
       }, 0);
     };
-  
+
     /**
      * returns a copy of the collection with array type.
      * @param {Collection} collection - collection eg) node.childNodes, ...
@@ -319,7 +319,7 @@
       }
       return result;
     };
-  
+
     /**
      * cluster elements by predicate function.
      *
@@ -340,7 +340,7 @@
         return memo;
       }, [[head(array)]]);
     };
-  
+
     /**
      * returns a copy of the array with all falsy values removed
      *
@@ -394,7 +394,7 @@
       return array[idx - 1];
     };
 
-  
+
     return { head: head, last: last, initial: initial, tail: tail,
              prev: prev, next: next, find: find, contains: contains,
              all: all, sum: sum, from: from,
@@ -2045,6 +2045,8 @@
       onkeydown: null,          // keydown
       onImageUpload: null,      // imageUpload
       onImageUploadError: null, // imageUploadError
+      onFileUpload: null,       // fileUpload
+      onFileUploadError: null,  // fileUploadError
       onToolbarClick: null,
       onsubmit: null,
 
@@ -2150,8 +2152,8 @@
           shapeCircle: 'Shape: Circle',
           shapeThumbnail: 'Shape: Thumbnail',
           shapeNone: 'Shape: None',
-          dragImageHere: 'Drag image here',
-          dropImage: 'Drop image',
+          dragImageHere: 'Drag image or document here',
+          dropImage: 'Drop image or Document',
           selectFromFiles: 'Select from files',
           maximumFileSize: 'Maximum file size',
           maximumFileSizeError: 'Maximum file size exceeded.',
@@ -2253,7 +2255,7 @@
         }).readAsDataURL(file);
       }).promise();
     };
-  
+
     /**
      * create `<image>` from url string
      *
@@ -2415,7 +2417,7 @@
   var Typing = function () {
 
     /**
-     * @param {jQuery} $editable 
+     * @param {jQuery} $editable
      * @param {WrappedRange} rng
      * @param {Number} tabsize
      */
@@ -2938,6 +2940,16 @@
     this.insertText = function ($editable, text) {
       var textNode = this.createRange($editable).insertNode(dom.createText(text), true);
       range.create(textNode, dom.nodeLength(textNode)).select();
+      afterCommand($editable);
+    };
+
+    /**
+     * insert inline html
+     * @param {Node} $editable
+     * @param {String} html
+     */
+    this.insertInlineHtml = function ($editable, html) {
+      dom.createInlineHtml(html);
       afterCommand($editable);
     };
 
@@ -3520,7 +3532,7 @@
   };
 
   /**
-   * Dialog 
+   * Dialog
    *
    * @class
    */
@@ -3571,13 +3583,13 @@
 
           $imageUrl.on('keyup paste', function (event) {
             var url;
-            
+
             if (event.type === 'paste') {
               url = event.originalEvent.clipboardData.getData('text');
             } else {
               url = $imageUrl.val();
             }
-            
+
             toggleBtn($imageBtn, url);
           }).val('').trigger('focus');
         }).one('hidden.bs.modal', function () {
@@ -3697,6 +3709,7 @@
     var editor = new Editor();
     var toolbar = new Toolbar(), popover = new Popover();
     var handle = new Handle(), dialog = new Dialog();
+    var IMAGE_EXTENSIONS = ['jpg', 'jpeg', 'png', 'webp'];
 
     this.getEditor = function () {
       return editor;
@@ -3735,7 +3748,6 @@
 
       var callbacks = $editable.data('callbacks');
       var options = $editor.data('options');
-
       // If onImageUpload options setted
       if (callbacks.onImageUpload) {
         callbacks.onImageUpload(files, editor, $editable);
@@ -3743,6 +3755,7 @@
       } else {
         $.each(files, function (idx, file) {
           var filename = file.name;
+          var extn = filename.split('.').pop().toLowerCase();
           if (options.maximumImageFileSize && options.maximumImageFileSize < file.size) {
             if (callbacks.onImageUploadError) {
               callbacks.onImageUploadError(options.langInfo.image.maximumFileSizeError);
@@ -3751,7 +3764,13 @@
             }
           } else {
             async.readFileAsDataURL(file).then(function (sDataURL) {
-              editor.insertImage($editable, sDataURL, filename);
+              if ($.inArray(extn, IMAGE_EXTENSIONS) !== -1) {
+                editor.insertImage($editable, sDataURL, filename);
+              } else if (callbacks.onFileUpload) {
+                callbacks.onFileUpload(file, extn, sDataURL, editor, $editable);
+              } else {
+                // pass
+              }
             }).fail(function () {
               if (callbacks.onImageUploadError) {
                 callbacks.onImageUploadError();
@@ -4231,10 +4250,13 @@
         event.preventDefault();
 
         var dataTransfer = event.originalEvent.dataTransfer;
-        if (dataTransfer && dataTransfer.files) {
-          var layoutInfo = makeLayoutInfo(event.currentTarget || event.target);
-          layoutInfo.editable().focus();
+        var text = dataTransfer.getData('text/plain');
+        var layoutInfo = makeLayoutInfo(event.currentTarget || event.target);
+        layoutInfo.editable().focus();
+        if (dataTransfer && dataTransfer.files && dataTransfer.files.length) {
           insertImages(layoutInfo, dataTransfer.files);
+        } else if (text) {
+          editor.insertText(layoutInfo.editable(), text);
         }
       }).on('dragover', false); // prevent default dragover event
     };
@@ -4859,10 +4881,12 @@
       var body = [];
 
       for (var i in keys) {
-        body.push(
-          '<div class="' + keyClass + 'key">' + keys[i].kbd + '</div>' +
-          '<div class="' + keyClass + 'name">' + keys[i].text + '</div>'
-          );
+        if (keys.hasOwnProperty(i)) {
+          body.push(
+            '<div class="' + keyClass + 'key">' + keys[i].kbd + '</div>' +
+            '<div class="' + keyClass + 'name">' + keys[i].text + '</div>'
+            );
+        }
       }
 
       return '<div class="note-shortcut-row row"><div class="' + keyClass + 'title col-xs-offset-6">' + title + '</div></div>' +

@@ -117,6 +117,8 @@ define('summernote/settings', function () {
       onkeydown: null,          // keydown
       onImageUpload: null,      // imageUpload
       onImageUploadError: null, // imageUploadError
+      onFileUpload: null,       // fileUpload
+      onFileUploadError: null,  // fileUploadError
       onToolbarClick: null,
       onsubmit: null,
 
@@ -222,8 +224,8 @@ define('summernote/settings', function () {
           shapeCircle: 'Shape: Circle',
           shapeThumbnail: 'Shape: Thumbnail',
           shapeNone: 'Shape: None',
-          dragImageHere: 'Drag image here',
-          dropImage: 'Drop image',
+          dragImageHere: 'Drag image or document here',
+          dropImage: 'Drop image or Document',
           selectFromFiles: 'Select from files',
           maximumFileSize: 'Maximum file size',
           maximumFileSizeError: 'Maximum file size exceeded.',

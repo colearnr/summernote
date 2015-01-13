@@ -28,6 +28,7 @@ define([
     var editor = new Editor();
     var toolbar = new Toolbar(), popover = new Popover();
     var handle = new Handle(), dialog = new Dialog();
+    var IMAGE_EXTENSIONS = ['jpg', 'jpeg', 'png', 'webp'];
 
     this.getEditor = function () {
       return editor;
@@ -66,7 +67,6 @@ define([
 
       var callbacks = $editable.data('callbacks');
       var options = $editor.data('options');
-
       // If onImageUpload options setted
       if (callbacks.onImageUpload) {
         callbacks.onImageUpload(files, editor, $editable);
@@ -74,6 +74,7 @@ define([
       } else {
         $.each(files, function (idx, file) {
           var filename = file.name;
+          var extn = filename.split('.').pop().toLowerCase();
           if (options.maximumImageFileSize && options.maximumImageFileSize < file.size) {
             if (callbacks.onImageUploadError) {
               callbacks.onImageUploadError(options.langInfo.image.maximumFileSizeError);
@@ -82,7 +83,13 @@ define([
             }
           } else {
             async.readFileAsDataURL(file).then(function (sDataURL) {
-              editor.insertImage($editable, sDataURL, filename);
+              if ($.inArray(extn, IMAGE_EXTENSIONS) !== -1) {
+                editor.insertImage($editable, sDataURL, filename);
+              } else if (callbacks.onFileUpload) {
+                callbacks.onFileUpload(file, extn, sDataURL, editor, $editable);
+              } else {
+                // pass
+              }
             }).fail(function () {
               if (callbacks.onImageUploadError) {
                 callbacks.onImageUploadError();
@@ -562,10 +569,13 @@ define([
         event.preventDefault();
 
         var dataTransfer = event.originalEvent.dataTransfer;
-        if (dataTransfer && dataTransfer.files) {
-          var layoutInfo = makeLayoutInfo(event.currentTarget || event.target);
-          layoutInfo.editable().focus();
+        var text = dataTransfer.getData('text/plain');
+        var layoutInfo = makeLayoutInfo(event.currentTarget || event.target);
+        layoutInfo.editable().focus();
+        if (dataTransfer && dataTransfer.files && dataTransfer.files.length) {
           insertImages(layoutInfo, dataTransfer.files);
+        } else if (text) {
+          editor.insertText(layoutInfo.editable(), text);
         }
       }).on('dragover', false); // prevent default dragover event
     };
