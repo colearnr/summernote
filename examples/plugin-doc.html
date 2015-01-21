@@ -104,7 +104,7 @@
           styleStr += 'background-color: ' + props.highlight + '; ';
         }
         if (props.sz && !isNaN(props.sz) && props.sz != 11) {
-          styleStr += 'font-size: ' + props.sz + '; ';
+          styleStr += 'font-size: ' + props.sz + 'px; ';
         }
         if (props.spacing) {
           if (props.spacing.top && !isNaN(props.spacing.top)) {
@@ -139,11 +139,12 @@
         tableColStarted = false,
         listStarted = false,
         listRowStarted = false,
+        linkStarted = false,
         headerStyles = {},
         headingLevel = null;
 
       converter.visit = function() {
-        //console.log('Type is', this.model.type);
+        console.log('Type is', this.model.type);
         function closeTableTag(self) {
           if (tableColStarted) {
             self.push('</td>');
@@ -171,14 +172,19 @@
         }
 
         switch (this.model.type) {
+          case 'document':
+          case 'documentStyles':
+          case 'style.document':
+          case 'style.paragraph':
+          case 'style.table':
+          case 'style.numbering':
+          case 'style.numbering.definition':
+          case 'style.inline':
+            break;
+          case null:
+            break;
           case 'body':
             this.push('<div class="docContent">');
-            break;
-          case 'style.document':
-            break;
-          case 'style.paragraph':
-            break;
-          case 'style.inline':
             break;
           case 'heading':
             if (paraStarted) {
@@ -190,6 +196,9 @@
             isHeading = true;
             headingLevel = this.model.getOutlineLevel() + 1;
             this.push('<h' + headingLevel + '>');
+            break;
+          case 'section':
+            console.log(this.model);
             break;
           case 'paragraph':
             if (tableStarted) {
@@ -203,7 +212,20 @@
               this.push('</p><p>');
             }
             break;
+          case 'hyperlink':
+            //console.log(this.model, this.model.getLink());
+            var linkUrl = this.model.getLink();
+            if (linkUrl) {
+              linkStarted = true;
+              this.push('<a href="' + linkUrl + '">');
+            } else {
+
+            }
+            break;
           case 'inline':
+            if (linkStarted) {
+              return;
+            }
             var props = this.model.getAppliedStyles();
             var styleStr = propsToStyle(props);
             if (styleStr != '') {
@@ -237,6 +259,7 @@
             break;
           case 'text':
             var textStr = this.model.getText();
+            console.log(textStr);
             if (textStr == '') {
               textStr = '&nbsp;';
             }
@@ -253,6 +276,10 @@
               this.push('</h' + headingLevel + '>');
               isHeading = false;
               headingLevel = null;
+            }
+            if (linkStarted) {
+              this.push('</a>');
+              linkStarted = false;
             }
             break;
           case 'image':
@@ -272,6 +299,8 @@
             var level = this.model.getLevel() + 1;
             this.push('<li>');
             listRowStarted = true;
+            break;
+          case 'drawing.anchor':
             break;
           case 'bookmarkEnd':
             closeTableTag(this);
